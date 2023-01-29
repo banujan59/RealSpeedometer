@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+RSEmbeddedDevice/.vscode/
+RSEmbeddedDevice/build/
+
+RSWindows/.vscode/
+RSWindows/__pycache__/
