@@ -44,7 +44,7 @@ This setup will show you how you can run the program using a Raspberry Pi 3B+ an
 
 ### 4.1 Gauge cluster
 Here is the pinout of a 2002-2007 Subaru Impreza gauge cluster:
-![alt text](Doc/Impreza2002-2007-pinout.jpg "Main Screen with controller connected")
+![cluster-pinout](Doc/Impreza2002-2007-pinout.jpg "Pinout of 2002-2007 Subaru Impreza")
 
 You need to connect the following pins:
 | Pin  from cluster | Connect To  | Description of pin
@@ -90,6 +90,48 @@ If you setup everything correctly, you should see engine temp gauge moving as yo
 
 
 ## 6 - Vision algorithm
+### 6.1 - Overview
 This project uses a custom computer vision algorithm to detect the number displayed in the game's speedometer. What is particularly interesting about this algorithm is that it only runs on the CPU. This means you can let the game take full advantage of your GPU instead. 
 
+Here's how it works. 
+1. A screenshot is taken of the screen where the game is running. Example:
+    ![Screenshot of Forza Horizon 5 in game](Doc/screenshot_full_color.jpg "Screenshot of Forza Horizon 5 in game")
+
+2. Apply a grayscale to the screenshot
+3. We defined an area of interest on the screen to crop. This is where the speedometer of the game will be located.
+
+    ![Cropped speed](Doc/cropped_speed.jpg "Cropped speed")
+
+4. Threshold the image to get the digits representing the speed:
+
+    ![Threshold speed](Doc/threshold_speed.jpg "Threshold speed")
+
+5. Use OpenCV's contour detection function to seperate each digit. In this example, only 2 digits are detected (3 and 5). The order of the numbers are remembered by the pixel x position that OpenCV returns (this is for the prediction phase).
+
+    ![cropped 3](Doc/cropped_3.jpg "cropped 3")
+
+    ![cropped 5](Doc/cropped_5.jpg "cropped 5")
+
+6. When in training mode, we label these 2 digits as 3 and 5 respectively. Then, we save them in a file. This will be our labeled dataset.
+
+7. During the prediction phase we repeat step 1 to 5 but we substract each digit with each entry in the dataset. We know we have a match if the resulting image is completly (or almost) black. Otherwise it is an incorrect match. For example, look what happens when we substract the digit 3 and 5 shown in step 5:
+
+    ![Wrong digit detected](Doc/incorrect_substraction.jpg "Wrong digit detected")
+
+    I noticed the game does not draw the digits at the same location every time. There's small difference of a few pixels. To fix this, I applied a small erosion filter to the substracted image. This guarantees us a match with the digit saved in the dataset. 
+
+8. By remembering the position of the digits (step 5), we can reconstruct the number. For example, we detected the digit 3 at position x = 38 pixel and we detected digit 5 at position x = 60. So, we know 3 comes before 5 and we get 35 as the prediction.
+
+And there you have it! Quite a simple algorithm but is very effective as we don't need a complex neural network to do a similar job. The fact that it runs on the CPU only is a huge plus as the GPU might be overwhelmed by running the game. There are some pros and cons to this algorithm:
+
+Pros:
+- Runs on CPU
+- Easy to train
+- Fast to predict (around 3 - 5 ms average on my Intel 11700 CPU)
+
+Cons:
+- Since every game uses a different font, we need to train a separate dataset for a specific game. 
+- The speedometer location will vary from game to game. Again, a need to develop a specific dataset for a game.
+
+### 6.2 Training
 I will post instructions on how to train and detect number for your game in a future version of this doc.
