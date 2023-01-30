@@ -1,6 +1,9 @@
 # RealSpeedometer
 
-Table of contents: 
+Table of contents.
+
+The vision alorithm is at the bottom of the page.
+
 - [RealSpeedometer](#realspeedometer)
   * [1 - Summary of Project](#1---summary-of-project)
     + [1.1 - How it works (overview)](#11---how-it-works--overview-)
@@ -14,6 +17,8 @@ Table of contents:
     + [5.1 Raspberry Pi 3B+ (RSEmbeddedDevice)](#51-raspberry-pi-3b---rsembeddeddevice-)
     + [5.2 Windows (RSWindows)](#52-windows--rswindows-)
   * [6 - Vision algorithm](#6---vision-algorithm)
+    + [6.1 - Overview](#61---overview)
+    + [6.2 Training](#62-training)
 
 ## 1 - Summary of Project
 This project aims to use a real gauge cluster from a car and making it work with racing video games.
