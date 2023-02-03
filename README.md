@@ -34,9 +34,13 @@ There are 2 parts of this project :
 - An embedded device program that will run on a microcomputer such as a Raspberry Pi (In the folder "RSEmbeddedDevice"). The code will work with a Raspberry 3B+. Its responsibilty is to accept the data sent by the RSWindows program and update the actual gauge cluster.
 
 ## 2 - Demo Video
-A demo video is available in the folder Doc/cluster_output_demo.mp4. 
+A demo video is available in the folder Doc/videos/:
+
+[cluster_output_demo.mp4](https://github.com/banujan59/RealSpeedometer/blob/main/Doc/videos/cluster_output_demo.mp4) is the a demo of the cluster needle moving with the game's speedometer.
 
 As of writing this, I was only able to move the engine gauge temp. I will update the demo video as soon as I get the speedometer and the RPM gauge working. 
+
+[terminal_output.mp4](https://github.com/banujan59/RealSpeedometer/blob/main/Doc/videos/terminal_output.mp4) is the a demo of the terminal output of the Windows program. It shows the detected speed and the time it took (in microseconds).
 
 ## 3 - Prerequisites
 If you are looking to run this project you will need the following:
