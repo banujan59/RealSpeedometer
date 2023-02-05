@@ -20,6 +20,8 @@ class Detector:
         self._dataFile = os.path.join(datasetDirectory, "datas.pkl")
         self._labelFile = os.path.join(datasetDirectory, "labels.pkl")
 
+        self._speedometerPositionX = None # This will be set during the first call of the Detect function
+
     def LoadDataset(self):
         with open(self._dataFile, 'rb') as file:
             self.datas = pickle.load(file)
@@ -54,7 +56,10 @@ class Detector:
         img = cv2.resize(img, (w, h))
 
         # crop img to get ROI (the speedometer)
-        x = 720
+        if self._speedometerPositionX is None:
+            self.__GetSpeedometerHUDXPositionFromAspectRatio(img)
+            
+        x = self._speedometerPositionX
         y = 413
         img = img[y:y+self.DATASET_HEIGHT,x:x+self.DATASET_WIDTH]
         ret, img = cv2.threshold(img, 170, 255, cv2.THRESH_BINARY)
@@ -89,9 +94,6 @@ class Detector:
                 prediction = ""
 
                 for _, digitImg in digits:
-                    # cv2.imshow("Test", digitImg)
-                    # cv2.waitKey(0)
-
                     digitImg = cv2.resize(digitImg, (25, 45), cv2.INTER_NEAREST)
 
                     found = False
@@ -127,3 +129,25 @@ class Detector:
                 return img, prediction, unrecognizedDigits
 
         return img, "", []
+
+    def __GetSpeedometerHUDXPositionFromAspectRatio(self, img):
+        """
+        This function will set self._speedometerPositionX acording to the current monitor aspect ratio
+
+        :param img: This should be reszied screenshot buffer (not cropped). The function will use the objet's shape attribute to determine 
+        the aspect ratio of the monitor.
+        
+        """
+        dividFactor = img.shape[0] / 9
+        widthAspect = round(img.shape[1] / dividFactor)
+
+        if widthAspect == 16: # 16:9 ratio
+            self._speedometerPositionX = 720
+        elif widthAspect == 21: # 21:9 ratio
+            self._speedometerPositionX = 1005
+        elif widthAspect == 32: # 32:9 ratio
+            self._speedometerPositionX = 1551
+        else:
+            print("ERROR: The aspect ratio of your monitor is not suported by this application.")
+            self._speedometerPositionX = 0
+
