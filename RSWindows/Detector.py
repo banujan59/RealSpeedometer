@@ -139,7 +139,7 @@ class Detector:
         
         """
         dividFactor = img.shape[0] / 9
-        widthAspect = int(img.shape[1] / dividFactor)
+        widthAspect = round(img.shape[1] / dividFactor)
 
         if widthAspect == 16: # 16:9 ratio
             self._speedometerPositionX = 720
