@@ -38,7 +38,7 @@ A demo video is available in the folder Doc/videos/:
 
 [cluster_output_demo.mp4](https://github.com/banujan59/RealSpeedometer/blob/main/Doc/videos/cluster_output_demo.mp4) is the a demo of the cluster needle moving with the game's speedometer.
 
-As of writing this, I was only able to move the engine gauge temp. I will update the demo video as soon as I get the speedometer and the RPM gauge working. 
+> As of writing this, I was only able to move the engine gauge temp. I will update the demo video as soon as I get the speedometer and the RPM gauge working.
 
 [terminal_output.mp4](https://github.com/banujan59/RealSpeedometer/blob/main/Doc/videos/terminal_output.mp4) is the a demo of the terminal output of the Windows program. It shows the detected speed and the time it took (in microseconds).
 
