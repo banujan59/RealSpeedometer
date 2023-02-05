@@ -94,9 +94,6 @@ class Detector:
                 prediction = ""
 
                 for _, digitImg in digits:
-                    # cv2.imshow("Test", digitImg)
-                    # cv2.waitKey(0)
-
                     digitImg = cv2.resize(digitImg, (25, 45), cv2.INTER_NEAREST)
 
                     found = False
