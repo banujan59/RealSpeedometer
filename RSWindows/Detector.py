@@ -6,8 +6,19 @@ import os
 
 class Detector:
     def __init__(self):
-        self.DATASET_WIDTH = 90
-        self.DATASET_HEIGHT = 50
+        self._HUD_WIDTH = 135
+        self._HUD_HEIGHT = 135
+        self._HUD_Y = 327
+
+        self._HUD_SPEED_X = 31
+        self._HUD_SPEED_Y = 88
+        self._HUD_SPEED_WIDTH = 72
+        self._HUD_SPEED_HEIGHT = 46
+
+        self._HUD_CENTER_X = 27
+        self._HUD_CENTER_Y = 50
+        self._HUD_CENTER_WIDTH = 81
+        self._HUD_CENTER_HEIGHT = 32
 
         self.datas = []
         self.labels = []
@@ -55,13 +66,68 @@ class Detector:
         w = int(img.shape[1] / (img.shape[0] / h))
         img = cv2.resize(img, (w, h))
 
-        # crop img to get ROI (the speedometer)
+        # crop img to get ROI (the speedometer HUD)
         if self._speedometerPositionX is None:
             self.__GetSpeedometerHUDXPositionFromAspectRatio(img)
             
         x = self._speedometerPositionX
-        y = 413
-        img = img[y:y+self.DATASET_HEIGHT,x:x+self.DATASET_WIDTH]
+        y = self._HUD_Y
+        w = self._HUD_WIDTH
+        h = self._HUD_HEIGHT
+        img = img[y:y+h,x:x+w]
+
+        # Crop & detect the speed
+        x = self._HUD_SPEED_X
+        y = self._HUD_SPEED_Y
+        w = self._HUD_SPEED_WIDTH
+        h = self._HUD_SPEED_HEIGHT
+        speedImg = img[y:y+h,x:x+w]
+        speedImgDetected, prediction, unrecognizedDigits = self.__DetectSpeed(speedImg)
+        detectedSpeed = 0
+
+        if len(unrecognizedDigits) == 0 and prediction != "":
+          detectedSpeed = int(prediction)
+
+        # Detect RPM
+        # Mask the speed
+        speedImg.fill(0) # Since it is passed by reference, it will reflect on img too
+
+        # Mask center part of HUD
+        x = self._HUD_CENTER_X
+        y = self._HUD_CENTER_Y
+        w = self._HUD_CENTER_WIDTH
+        h = self._HUD_CENTER_HEIGHT
+        centerHUD = img[y:y+h,x:x+w]
+        centerHUD.fill(0)
+
+        detectedRPM = self.__DetectRPM(img)
+
+        # return results
+        return detectedSpeed, detectedRPM
+
+
+    def __GetSpeedometerHUDXPositionFromAspectRatio(self, img):
+        """
+        This function will set self._speedometerPositionX acording to the current monitor aspect ratio
+
+        :param img: This should be reszied screenshot buffer (not cropped). The function will use the objet's shape attribute to determine 
+        the aspect ratio of the monitor.
+        
+        """
+        dividFactor = img.shape[0] / 9
+        widthAspect = round(img.shape[1] / dividFactor)
+
+        if widthAspect == 16: # 16:9 ratio
+            self._speedometerPositionX = 700
+        elif widthAspect == 21: # 21:9 ratio
+            self._speedometerPositionX = 1005
+        elif widthAspect == 32: # 32:9 ratio
+            self._speedometerPositionX = 1551
+        else:
+            print("ERROR: The aspect ratio of your monitor is not suported by this application.")
+            self._speedometerPositionX = 0
+
+    def __DetectSpeed(self, img):
         ret, img = cv2.threshold(img, 170, 255, cv2.THRESH_BINARY)
 
         if np.sum(img) != 0:
@@ -130,24 +196,5 @@ class Detector:
 
         return img, "", []
 
-    def __GetSpeedometerHUDXPositionFromAspectRatio(self, img):
-        """
-        This function will set self._speedometerPositionX acording to the current monitor aspect ratio
-
-        :param img: This should be reszied screenshot buffer (not cropped). The function will use the objet's shape attribute to determine 
-        the aspect ratio of the monitor.
-        
-        """
-        dividFactor = img.shape[0] / 9
-        widthAspect = round(img.shape[1] / dividFactor)
-
-        if widthAspect == 16: # 16:9 ratio
-            self._speedometerPositionX = 720
-        elif widthAspect == 21: # 21:9 ratio
-            self._speedometerPositionX = 1005
-        elif widthAspect == 32: # 32:9 ratio
-            self._speedometerPositionX = 1551
-        else:
-            print("ERROR: The aspect ratio of your monitor is not suported by this application.")
-            self._speedometerPositionX = 0
-
+    def __DetectRPM(self, img):
+      return 0
