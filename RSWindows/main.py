@@ -40,18 +40,15 @@ if __name__ == "__main__":
             img = np.array(sct.grab(monitor))
             
             start = time.time() * 1000000
-            img, detectedSpeed, unrecognizedDigits = detector.Detect(img)
+            detectedSpeed, detectedRPM = detector.Detect(img)
             end = time.time() * 1000000
             duration = end - start
             nbDetection = nbDetection + 1
             detectionTimeSum = detectionTimeSum + duration
 
-            if detectedSpeed != "":
-                print(f"{detectedSpeed} km/h. Detection time is {duration} us, \taverage is {detectionTimeSum / nbDetection} us")
-                car.SetData(detectedSpeed, 0, 0, 0)
-                clusterCommunicator.SendData(car.encodeData())
-            else:
-                print("Unknown")
+            print(f"{detectedSpeed} km/h {detectedRPM} RPM. Detection time is {duration} us, \taverage is {detectionTimeSum / nbDetection} us")
+            car.SetData(detectedSpeed, 0, 0, 0)
+            clusterCommunicator.SendData(car.encodeData())
 
             time.sleep(0.1)
     
