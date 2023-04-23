@@ -22,6 +22,14 @@ class Detector:
         self._HUD_CENTER_WIDTH = 81
         self._HUD_CENTER_HEIGHT = 32
 
+        # TODO rename these variable to lower case since they're not constants
+        self._SPEEDOMETER_CENTERX = 0
+        self._SPEEDOMETER_CENTERY = 0
+        self._SPEEDOMETER_RADIUS = 0
+        self._SPEEDOMERTER_CENTER_ANGLE = 0.0
+        self._SPEEDOMETER_ARC_LENGTH = 0
+        self._SPEEDOMETER_DISTANCE_BETWEEN_DIGITS = 0
+
         self.datas = []
         self.labels = []
 
@@ -278,7 +286,7 @@ class Detector:
               inserted = True
               break
 
-          # If the coordinates are in the same side:
+          # If the coordinates are in the same side of the center:
           else:
             if(coordinateX < centerX):
               # Left side of speedometer. Numbers increase from bottom to top
@@ -301,11 +309,9 @@ class Detector:
 
       return listToReturn
 
-    def __GetRPMDigitContours(self, withoutRPMNeedle):
+    def __GetSpeedometerDigitPositions(self, withoutRPMNeedle):
       detectedDigitsCoordinates = []
 
-      # Crop the left side of the speedometer. This is an attempt to optimize the contour detection.
-      # The top of the speedometer can be noisy sometimes. The left side should be easier to process in general.
       yOffset = 25
       x = 0
       y = yOffset
@@ -344,136 +350,178 @@ class Detector:
       :param detectedDigitsCoordinates: An array of the detected contours of the RPMs (their x and y posiitons) from function __GetRPMDigitContours. 
               It is expected that this list is already ordered by increasing RPMs. 
       """
-      # Step 1: Find the equation of the circle to find radius and its center.
-      # The equation of a circle is: (x-h)^2 + (y-k)^2 = r^2
-      # We have 3 unknowns (r, h and k). Therefore, we need at least 3 points solve the equation
-      if len(detectedDigitsCoordinates) < 3:
-         return []
-      
-      x1 = detectedDigitsCoordinates[0][0]
-      y1 = detectedDigitsCoordinates[0][1]
-
-      x2 = detectedDigitsCoordinates[1][0]
-      y2 = detectedDigitsCoordinates[1][1]
-
-      x3 = detectedDigitsCoordinates[2][0]
-      y3 = detectedDigitsCoordinates[2][1]
-
-      r, h, k = symbols('r h k')
-      results = solve([Eq(pow((x1-h),2) + pow((y1-k),2), pow(r,2)), Eq(pow((x2-h),2) + pow((y2-k),2), pow(r,2)), Eq(pow((x3-h),2) + pow((y3-k),2), pow(r,2))], [r, h, k])
-
-      # There should be 2 answers because of the sqrt of radius
-      if len(results) != 2:
-        return [] # Error
-
-      radius = 0
-      centerX = 0
-      centerY = 0
-
-      for result in results:
-        # Reject the answer with the negative radius.
-        if result[0] < 0:
-          continue
-
-        r,h,k = result
-        radius = float(r)
-        centerX = round(float(h))
-        centerY = round(float(k))
-
-      # Step 2: Find the center angle of the arc formed by 2 consecutive RPM
-      # Find the euclidean distance between 2 consecutive points
-      # Assumption: the array passed to this function is already sorted by RPM
-      coordRPM1 = detectedDigitsCoordinates[0]
-      coordRPM2 = detectedDigitsCoordinates[1]
-      distanceBetweenRPM = self.__CalculateDistance(coordRPM1, coordRPM2)
-
-      # Divide distance by 2 to construct right a angle triangle 
-      d = distanceBetweenRPM / 2.0
-
-      # Simple trigonometry to find half of the center angle
-      centerAngle = asin(d / radius)
-
-      # Multiply by 2 to get center angle
-      centerAngle = centerAngle * 2
-
-      # Step 3: Find angle relative to first quadrant
-      rpm1X = coordRPM1[0]
-      angleFromFirstQuadrant = acos((rpm1X - centerX) / radius)
-
-      # Step 4: Populate the RPM list
-      # Just keep adding the center angle to the reference angle
-      # and use simple trigonometry to find the coordinates of the RPMs
-      # Assumption: Every arc formed by RPM have same center angle (RPMs are equally spaced)
-
-      # The number of possible RPM in this case is 360 / center angle of arc (in deg) + 1
-      centerAngleDeg = centerAngle * 180 / math.pi
-      numberOfRPMs = int(360 / centerAngleDeg) + 1
-
       speedometerDigits = []
-      for i in range(numberOfRPMs):
-        if i > 0:
-          angleFromFirstQuadrant = angleFromFirstQuadrant + centerAngle
 
-        rpmX = cos(angleFromFirstQuadrant) * radius + centerX
-        rpmY = sin(angleFromFirstQuadrant) * radius + centerY
+      if len(detectedDigitsCoordinates) >= 3:
+        # Step 1: Find the equation of the circle to find radius and its center.
+        # The equation of a circle is: (x-h)^2 + (y-k)^2 = r^2
+        # Therefore, we need at least 3 points solve the equation
+        x1 = detectedDigitsCoordinates[0][0]
+        y1 = detectedDigitsCoordinates[0][1]
 
-        rpmX = round(rpmX)
-        rpmY = round(rpmY)
+        x2 = detectedDigitsCoordinates[1][0]
+        y2 = detectedDigitsCoordinates[1][1]
 
-        speedometerDigits.append( (rpmX, rpmY) )
+        x3 = detectedDigitsCoordinates[2][0]
+        y3 = detectedDigitsCoordinates[2][1]
+
+        r, h, k = symbols('r h k')
+        results = solve([Eq(pow((x1-h),2) + pow((y1-k),2), pow(r,2)), Eq(pow((x2-h),2) + pow((y2-k),2), pow(r,2)), Eq(pow((x3-h),2) + pow((y3-k),2), pow(r,2))], [r, h, k])
+
+        if len(results) < 2:
+          return [] # Error
+
+        self._SPEEDOMETER_CENTERX = 0
+        self._SPEEDOMETER_CENTERY = 0
+        self._SPEEDOMETER_RADIUS = 0
+
+        # There should be 2 answers because of the sqrt of radius
+        for result in results:
+          # Reject the answer with the negative radius.
+          if result[0] < 0:
+            continue
+          r,h,k = result
+          radius = float(r)
+          centerX = round(float(h))
+          centerY = round(float(k))
+
+        # Step 2: Find the center angle of the arc formed by 2 consecutive RPM
+        # FInd the euclidient distance between 2 consecutive points
+        # Assumption: the array passed to this function is already sorted by RPM
+        coordRPM1 = detectedDigitsCoordinates[0]
+        coordRPM2 = detectedDigitsCoordinates[1]
+        distanceBetweenRPM = self.__CalculateDistance(coordRPM1, coordRPM2)
+        self._SPEEDOMETER_DISTANCE_BETWEEN_DIGITS = distanceBetweenRPM
+
+        # Divide distance by 2 to construct right a angle triangle 
+        d = distanceBetweenRPM / 2.0
+
+        # Simple trigonometry to find half of the center angle
+        centerAngle = asin(d / radius)
+
+        # Multiply by 2 to get center angle
+        centerAngle = centerAngle * 2
+
+        # Step 3: Find angle relative to first quadrant
+        rpm1X = coordRPM1[0]
+        angleFromFirstQuadrant = acos((rpm1X - centerX) / radius)
+
+        # Step 4: Populate the RPM list
+        # Just keep adding the center angle to the reference angle
+        # and use simple trigonometry to find the coordinates of the RPMs
+        # Assumption: Every arc formed by RPM have same center angle (RPM are equally spaced)
+
+        # The number of possible RPM in this case is 360 / center angle of arc (in deg) + 1
+        centerAngleDeg = centerAngle * 180 / math.pi
+        numberOfRPMs = int(360 / centerAngleDeg) + 1
+
+        for i in range(numberOfRPMs):
+          if i > 0:
+            angleFromFirstQuadrant = angleFromFirstQuadrant + centerAngle
+
+          rpmX = cos(angleFromFirstQuadrant) * radius + centerX
+          rpmY = sin(angleFromFirstQuadrant) * radius + centerY
+
+          rpmX = round(rpmX)
+          rpmY = round(rpmY)
+
+          speedometerDigits.append( (rpmX, rpmY) )
+
+      self._SPEEDOMETER_CENTERX = centerX
+      self._SPEEDOMETER_CENTERY = centerY
+      self._SPEEDOMETER_RADIUS = radius
+      self._SPEEDOMERTER_CENTER_ANGLE = centerAngle
+
+      # Step 5: Calculate arc length
+      # This is used to calculate the RPM more accurately
+      self._SPEEDOMETER_ARC_LENGTH = radius * centerAngle
 
       return speedometerDigits
 
     def __EstimateCurrentRPM(self, speedometerDigits, rpmBox):
-      distanceThresholdBetweenDigits = 50 # TODO refactor this between to global variable
-
-      rpmBoxX = rpmBox[0]
-      rpmBoxY = rpmBox[1]
+      # Take the center of the RPM needle for a better approximation
+      x,y,w,h = rpmBox
+      rpmBoxX = int(x + w/2)
+      rpmBoxY = int(y + h/2)
       rpmNeedleCoord = (rpmBoxX, rpmBoxY)
-      # TODO adjust rpmNeedleCoord
-      # If on the left side, the middle of the left of rpmBox should be taken
-      # If on the right side, the middle of the right side of rpmBox should be taken
 
-      lowerBond = ()
-      upperBond = ()
-      distanceFromLowerBound = 0
+      # Construct line from middle of rpm needle to the center of the circle
+      # Equation is: y = ax + b
+      a = (rpmBoxY - self._SPEEDOMETER_CENTERY) / (rpmBoxX - self._SPEEDOMETER_CENTERX)
+      b = rpmBoxY - a * rpmBoxX
+      
+      # Solve for the 2 points where the line touches in the speedometer circle
+      # The equation of a circle is: (x-h)^2 + (y-k)^2 = r^2. 
+      # If we isolate y, we get 2 equations (each x in circle has 2 y):
+      # y = sqrt(r^2 - x^2 + 2*h*x - h^2) + k
+      # y = -sqrt(r^2 - x^2 + 2*h*x - h^2) + k
+      #
+      # Now we are solving the equation :
+      # a*x + b = sqrt(r^2 - x^2 + 2*h*x - h^2) + k
+      # a*x + b = -sqrt(r^2 - x^2 + 2*h*x - h^2) + k
+      possibleXs = list()
+      x = symbols('x')
 
+      results = solve([Eq(a*x + b, pow( pow(self._SPEEDOMETER_RADIUS,2) - pow(x,2) + 2 * self._SPEEDOMETER_CENTERX * x - pow(self._SPEEDOMETER_CENTERX,2), 0.5) + self._SPEEDOMETER_CENTERY)], [x])
+      possibleXs.append(results[0][0])
+
+      results = solve([Eq(a*x + b, -1 * pow( pow(self._SPEEDOMETER_RADIUS,2) - pow(x,2) + 2 * self._SPEEDOMETER_CENTERX * x - pow(self._SPEEDOMETER_CENTERX,2), 0.5) + self._SPEEDOMETER_CENTERY)], [x])
+      possibleXs.append(results[0][0])
+
+      # Pick the point that is closest to the needle point
+      chosenPointOnCircle = (0,0)
+      closestDistance = -1
+
+      for x in possibleXs:
+        y = a*x + b
+        distance = self.__CalculateDistance(rpmNeedleCoord, (x,y))
+
+        if closestDistance == -1 or distance < closestDistance:
+          closestDistance = distance
+          chosenPointOnCircle = (x,y)
+
+      # Find between which RPM is the point located
       thousandsCounter = 0
+      anglePercent = 0.0
+
       for coordinate in speedometerDigits:
-        distance = self.__CalculateDistance(rpmNeedleCoord, coordinate)
+        # Calculate distance between point and current RPM
+        distance = self.__CalculateDistance(chosenPointOnCircle, coordinate)
 
-        if distance < distanceThresholdBetweenDigits:
-          if len(lowerBond) == 0:
-            lowerBond = (thousandsCounter, coordinate)
-            distanceFromLowerBound = distance
-
-          elif len(upperBond) == 0:
-            upperBond = (thousandsCounter, coordinate)
-            break
+        # If distance is greater than distance between digit, the point doesn't belong to the current RPM
+        if distance < self._SPEEDOMETER_DISTANCE_BETWEEN_DIGITS:
+          # Calculate angle from point to RPM start
+          d = distance / 2.0
+          angleFromRPM = asin(d / self._SPEEDOMETER_RADIUS) * 2
+          
+          # Calculate the percent of the angle
+          anglePercent = angleFromRPM / self._SPEEDOMERTER_CENTER_ANGLE * 100.0
+          break
 
         thousandsCounter = thousandsCounter + 1000
 
-      if len(lowerBond) < 2 or len(upperBond) < 2:
-        return 0
-
-      distanceBetweenBounds = self.__CalculateDistance(lowerBond[1], upperBond[1])
-      distancePercent = distanceFromLowerBound / distanceBetweenBounds * 100.0
-
-      rpm = distancePercent * 10 + lowerBond[0] # (Equal to distancePercent * 1000 / 100 + lowerBound[0])
-
+      rpm = anglePercent * 10 + thousandsCounter # (Equal to anglePercent * 1000 / 100 + thousandsCounter)
       return round(rpm)
 
     def __DetectRPM(self, img):
+      se=cv2.getStructuringElement(cv2.MORPH_RECT , (20,20))
+      bg=cv2.morphologyEx(img, cv2.MORPH_DILATE, se)
+      out_gray=cv2.divide(img, bg, scale=255)
+      out_binary=cv2.threshold(out_gray, 0, 255, cv2.THRESH_OTSU )[1] 
+
       edgeKernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
       img = cv2.filter2D(img, -1, edgeKernel)
-      
-      _, tresh = cv2.threshold(img, 230, 255, cv2.THRESH_BINARY)
+
+      cv2_imshow(img)
+
+      ret, tresh = cv2.threshold(img, 230, 255, cv2.THRESH_BINARY)
       kernel = np.ones((2,2),np.uint8)
       rpmIndicator = cv2.erode(tresh,kernel,iterations = 1)
-      rpmIndicator = cv2.dilate(rpmIndicator,kernel,iterations = 2) # TODO adjust this. Needle is too thick
+      kernel = np.ones((3,3),np.uint8)
+      rpmIndicator = cv2.dilate(rpmIndicator,kernel,iterations = 2)
 
       # position of needle
-      contours, _ = cv2.findContours(image=rpmIndicator, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_NONE)
+      contours, hierarchy = cv2.findContours(image=rpmIndicator, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_NONE)
 
       if len(contours) > 5: # Not a valid speedometer if we couldn't detect the needle properly
         return 0
@@ -500,7 +548,7 @@ class Detector:
       rpmNeedleInThresholdedImg.fill(0)
 
       # Build the speedometer
-      detectedDigitsCoordinates = self.__GetRPMDigitContours(withoutRPMNeedle) # TODO add something to not rebuild the speedometer everytime
+      detectedDigitsCoordinates = self.__GetSpeedometerDigitPositions(withoutRPMNeedle) # TODO add something to not rebuild the speedometer everytime
       if detectedDigitsCoordinates == []:
         return 0
 
