@@ -507,21 +507,18 @@ class Detector:
       se=cv2.getStructuringElement(cv2.MORPH_RECT , (20,20))
       bg=cv2.morphologyEx(img, cv2.MORPH_DILATE, se)
       out_gray=cv2.divide(img, bg, scale=255)
-      out_binary=cv2.threshold(out_gray, 0, 255, cv2.THRESH_OTSU )[1] 
 
       edgeKernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
       img = cv2.filter2D(img, -1, edgeKernel)
 
-      cv2_imshow(img)
-
-      ret, tresh = cv2.threshold(img, 230, 255, cv2.THRESH_BINARY)
+      _, tresh = cv2.threshold(img, 230, 255, cv2.THRESH_BINARY)
       kernel = np.ones((2,2),np.uint8)
       rpmIndicator = cv2.erode(tresh,kernel,iterations = 1)
       kernel = np.ones((3,3),np.uint8)
       rpmIndicator = cv2.dilate(rpmIndicator,kernel,iterations = 2)
 
       # position of needle
-      contours, hierarchy = cv2.findContours(image=rpmIndicator, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_NONE)
+      contours, _ = cv2.findContours(image=rpmIndicator, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_NONE)
 
       if len(contours) > 5: # Not a valid speedometer if we couldn't detect the needle properly
         return 0
