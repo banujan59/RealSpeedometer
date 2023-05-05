@@ -16,7 +16,7 @@ count = 0
 
 while success:
     print("At Frame: ", count)
-    _, _, unrecognizedDigits = detector.Detect(image)
+    _, _, unrecognizedDigits = detector.Detect(image, True)
 
     for img in unrecognizedDigits:
         if np.sum(img) != 0:

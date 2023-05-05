@@ -8,19 +8,21 @@ from sympy import *
 
 class Detector:
     def __init__(self):
+        self.__frameDebugCounter = 0
+
         self._HUD_WIDTH = 135
         self._HUD_HEIGHT = 135
-        self._HUD_Y = 327
+        self._HUD_Y = 317
 
         self._HUD_SPEED_X = 31
         self._HUD_SPEED_Y = 88
         self._HUD_SPEED_WIDTH = 72
-        self._HUD_SPEED_HEIGHT = 46
+        self._HUD_SPEED_HEIGHT = 50
 
         self._HUD_CENTER_X = 27
         self._HUD_CENTER_Y = 50
         self._HUD_CENTER_WIDTH = 81
-        self._HUD_CENTER_HEIGHT = 32
+        self._HUD_CENTER_HEIGHT = 40
 
         # TODO rename these variable to lower case since they're not constants
         self._SPEEDOMETER_CENTERX = 0
@@ -68,8 +70,12 @@ class Detector:
         self.datas.append(img)
         self.labels.append(label)
 
-    # Function will return prediction and unrecognized digits
-    def Detect(self, img):
+    # Function will return prediction and unrecognized digits (if in training mode)
+    def Detect(self, img, training=False):
+        
+        # debugFilename = os.path.join("frameDebug", "frame_" + str(self.__frameDebugCounter) + ".png")
+        # cv2.imwrite(str(debugFilename), img)
+        # self.__frameDebugCounter = self.__frameDebugCounter + 1
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         h = 480
@@ -110,10 +116,16 @@ class Detector:
         centerHUD = img[y:y+h,x:x+w]
         centerHUD.fill(0)
 
-        detectedRPM = self.__DetectRPM(img)
+        detectedRPM = 0
+
+        if not training:
+          detectedRPM = self.__DetectRPM(img)
 
         # return results
-        return detectedSpeed, detectedRPM
+        if training == True:
+           return detectedSpeed, detectedRPM, unrecognizedDigits
+        else:
+          return detectedSpeed, detectedRPM
 
     # TODO update this function
     def __GetSpeedometerHUDXPositionFromAspectRatio(self, img):
@@ -132,7 +144,7 @@ class Detector:
         elif widthAspect == 21: # 21:9 ratio
             self._speedometerPositionX = 1005
         elif widthAspect == 32: # 32:9 ratio
-            self._speedometerPositionX = 1551
+            self._speedometerPositionX = 1531
         else:
             print("ERROR: The aspect ratio of your monitor is not suported by this application.")
             self._speedometerPositionX = 0
@@ -199,7 +211,7 @@ class Detector:
                                 prediction = prediction + str(self.labels[lowestSumIndex])
                                 continue
                             
-                            print("Unknown. LowestSum: ", lowestSum, " Prediction: ", self.labels[lowestSumIndex])
+                            #print("Unknown. LowestSum: ", lowestSum, " Prediction: ", self.labels[lowestSumIndex])
 
                         unrecognizedDigits.append(digitImg)
 
@@ -316,7 +328,7 @@ class Detector:
       x = 0
       y = yOffset
       w = 45
-      h = 90
+      h = 100
       leftSideRPM = withoutRPMNeedle[y:y+h,x:x+w]
 
       # Detect letters position 
@@ -427,20 +439,46 @@ class Detector:
 
           speedometerDigits.append( (rpmX, rpmY) )
 
-      self._SPEEDOMETER_CENTERX = centerX
-      self._SPEEDOMETER_CENTERY = centerY
-      self._SPEEDOMETER_RADIUS = radius
-      self._SPEEDOMERTER_CENTER_ANGLE = centerAngle
+        self._SPEEDOMETER_CENTERX = centerX
+        self._SPEEDOMETER_CENTERY = centerY
+        self._SPEEDOMETER_RADIUS = radius
+        self._SPEEDOMERTER_CENTER_ANGLE = centerAngle
 
-      # Step 5: Calculate arc length
-      # This is used to calculate the RPM more accurately
-      self._SPEEDOMETER_ARC_LENGTH = radius * centerAngle
+        # Step 5: Calculate arc length
+        # This is used to calculate the RPM more accurately
+        self._SPEEDOMETER_ARC_LENGTH = self._SPEEDOMETER_RADIUS * self._SPEEDOMERTER_CENTER_ANGLE
 
       return speedometerDigits
 
-    def __EstimateCurrentRPM(self, speedometerDigits, rpmBox):
+    def __EstimateCurrentRPM(self, speedometerDigits, rpmNeedleCandidates):
+      if len(rpmNeedleCandidates) == 0:
+        return 0
+
+      # Estimate the best needle based on the circle's equation
+      # The idea is to insert the x and y of each possible rpm needle into the circle's equation.
+      # Then, we will pick the best RPM needle candidate based on how far it is from radius squared 
+      # (remember the equation of the circle is (x-h)^2 + (y-k)^2 = r^2)
+      # This will tell us how far the candidate is from the border of the circle (we assume the real needle touches the border)
+      # TODO this algorithm might have a flaw: What if the "needle" detected is not correct because it is noise that is very close to the circle?
+      chosenRPMBox = (0,0,0,0)
+      smallestDifference = 6540 # An arbitrary value. 
+      radiusSquared = pow(self._SPEEDOMETER_RADIUS, 2)
+
+      for rpmBox in rpmNeedleCandidates:
+        x,y,w,h = rpmBox
+        rpmBoxX = int(x + w/2)
+        rpmBoxY = int(y + h/2)
+
+        # Insert into circle's equation
+        result = pow(rpmBoxX - self._SPEEDOMETER_CENTERX,2) + pow(rpmBoxY - self._SPEEDOMETER_CENTERY,2)
+        difference = abs(radiusSquared - result)
+
+        if difference < smallestDifference:
+          smallestDifference = difference
+          chosenRPMBox = rpmBox
+
       # Take the center of the RPM needle for a better approximation
-      x,y,w,h = rpmBox
+      x,y,w,h = chosenRPMBox
       rpmBoxX = int(x + w/2)
       rpmBoxY = int(y + h/2)
       rpmNeedleCoord = (rpmBoxX, rpmBoxY)
@@ -504,45 +542,47 @@ class Detector:
       return round(rpm)
 
     def __DetectRPM(self, img):
-      se=cv2.getStructuringElement(cv2.MORPH_RECT , (20,20))
-      bg=cv2.morphologyEx(img, cv2.MORPH_DILATE, se)
-      out_gray=cv2.divide(img, bg, scale=255)
-
       edgeKernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
       img = cv2.filter2D(img, -1, edgeKernel)
 
       _, tresh = cv2.threshold(img, 230, 255, cv2.THRESH_BINARY)
       kernel = np.ones((2,2),np.uint8)
       rpmIndicator = cv2.erode(tresh,kernel,iterations = 1)
-      kernel = np.ones((3,3),np.uint8)
+      kernel = np.ones((2,2),np.uint8)
       rpmIndicator = cv2.dilate(rpmIndicator,kernel,iterations = 2)
 
       # position of needle
       contours, _ = cv2.findContours(image=rpmIndicator, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_NONE)
 
-      if len(contours) > 5: # Not a valid speedometer if we couldn't detect the needle properly
+      if len(contours) == 0 or len(contours) > 8: # Not a valid speedometer if we couldn't detect the needle properly
         return 0
 
       # sometimes, because of the erosion performed previously, there might be noise left...
       # Find the biggest contours among all the contours detected
-      maxSize = 0
-      rpmBox =(0,0,0,0)
+      idealRPMNeedleMaxSize = 22 # Reject all contours above this size
+      idealRPMNeedleMinSize = 18 # Reject all contours below this size
+      rpmNeedleCandidates = []
+      withoutRPMNeedle = tresh # TODO
 
       for contour in contours:
         currentRpmBox = cv2.boundingRect(contour)
-        _,_,currentWidth, currentHeight = currentRpmBox
-        currentSize = currentWidth * currentHeight
+        x,y,w,h = currentRpmBox
+        currentSize = w * h
+
+        if currentSize >= idealRPMNeedleMinSize and currentSize <= idealRPMNeedleMaxSize:
+          rpmNeedleCandidates.append(currentRpmBox)
         
-        if currentSize > maxSize:
-          maxSize = currentSize
-          rpmBox = currentRpmBox
+        # Remove all contours to be left with only the digits
+        rpmNeedleInThresholdedImg = withoutRPMNeedle[y:y+h+1,x:x+w+1]
+        rpmNeedleInThresholdedImg.fill(0) # TODO what happens if needle is on a digit used to reconstruct the speedometer?
 
-      x,y,w,h = rpmBox
+      if len(rpmNeedleCandidates) == 0: # A proper sized needle could not be detected.
+        return 0
 
-      # Remove RPM needle
-      withoutRPMNeedle = tresh # TODO
-      rpmNeedleInThresholdedImg = withoutRPMNeedle[y:y+h+1,x:x+w+1]
-      rpmNeedleInThresholdedImg.fill(0)
+      kernel = np.ones((1,1),np.uint8)
+      withoutRPMNeedle = cv2.erode(withoutRPMNeedle,kernel,iterations = 1)
+      kernel = np.ones((2,2),np.uint8)
+      withoutRPMNeedle = cv2.dilate(withoutRPMNeedle,kernel,iterations = 2)
 
       # Build the speedometer
       detectedDigitsCoordinates = self.__GetSpeedometerDigitPositions(withoutRPMNeedle) # TODO add something to not rebuild the speedometer everytime
@@ -552,5 +592,5 @@ class Detector:
       speedometerDigits = self.__BuildSpeedometer(detectedDigitsCoordinates)
       if speedometerDigits == []:
         return 0
-
-      return self.__EstimateCurrentRPM(speedometerDigits, rpmBox)
+      
+      return self.__EstimateCurrentRPM(speedometerDigits, rpmNeedleCandidates)
