@@ -4,7 +4,7 @@ import pickle
 from pathlib import Path
 import os
 import math
-from sympy import *
+import sympy
 
 class Detector:
     def __init__(self):
@@ -236,25 +236,6 @@ class Detector:
       h = max(a[1]+a[3], b[1]+b[3]) - y
       return (x, y, w, h)
 
-    def __IsValidDigitOnSpeedometerCircle(self, detectedDigitsCoordinates, speedBox):
-      """
-      Function to make sure each detected digit has an acceptable minimum 
-      distance from each other.
-
-      :param detectedDigitsCoordinates: The detected coordinates
-      :param speedBox: The bounding box of the current digit to detect
-      """
-      distanceThresholdBetweenDigits = 20
-      
-      validDigit = True
-      currentSpeedCoordiante = (speedBox[0], speedBox[1])
-
-      for detected in detectedDigitsCoordinates: # TODO is there a better data structure to avoid this ?
-        if self.__CalculateDistance(detected, currentSpeedCoordiante) <= distanceThresholdBetweenDigits:
-          return False
-
-      return validDigit
-
     def __ReorderSpeedometerDigits(self, detectedDigitsCoordinates, centerX):
       """
       Function order a list of points representing the digits on the speedometer
@@ -335,22 +316,41 @@ class Detector:
       speedContours, _ = cv2.findContours(image=leftSideRPM, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_NONE)
 
       # If there are too many points or not enough, it is not a valid speedometer at target position
-      if len(speedContours) > 6 or len(speedContours) < 3:
+      if len(speedContours) > 15 or len(speedContours) < 3:
         return []
 
-      withoutRPMNeedle = cv2.cvtColor(withoutRPMNeedle, cv2.COLOR_GRAY2RGB)
-
+      maxYAccepted = 94 # Contours above this will be rejected
+      digitsDimentions = [
+        (5,6),  # For digits 0,2,3,4
+        (2,5)  # For digit 1
+      ]
+      
+      SIZE_TOLERANCE = 2
       for speedContour in speedContours:
         speedBox = cv2.boundingRect(speedContour)
 
         # Adjust y coordinate since we cropped before detecting contours
         x,y,w,h = speedBox
-        speedBox = (x,y+yOffset,w,h)
+        
+        if y > maxYAccepted:
+          continue
 
-        if self.__IsValidDigitOnSpeedometerCircle(detectedDigitsCoordinates, speedBox):
-          currentXY = (speedBox[0],speedBox[1])
-          withoutRPMNeedle = cv2.rectangle(withoutRPMNeedle, currentXY, (speedBox[0]+speedBox[2],speedBox[1]+speedBox[3]), (0,255,0), 1)
-          detectedDigitsCoordinates.append(currentXY)
+        # Correct the y since we cropped the left part of the speedometer
+        y = y+yOffset
+
+        validDigit = False
+        for digitsDimention in digitsDimentions:
+          if validDigit:
+            continue
+
+          expectedWidth = digitsDimention[0]
+          expectedHeight = digitsDimention[1]
+          widthDifferenceAcceptable = abs(expectedWidth - w) < SIZE_TOLERANCE
+          heightDifferenceAcceptable = abs(expectedHeight - h) < SIZE_TOLERANCE
+
+          if widthDifferenceAcceptable and heightDifferenceAcceptable:
+            detectedDigitsCoordinates.append( (int(x + w/2), int(y + h/2)) )
+            validDigit = True
 
       centerX = int(withoutRPMNeedle.shape[1] / 2)
       return self.__ReorderSpeedometerDigits(detectedDigitsCoordinates, centerX)
@@ -377,8 +377,8 @@ class Detector:
         x3 = detectedDigitsCoordinates[2][0]
         y3 = detectedDigitsCoordinates[2][1]
 
-        r, h, k = symbols('r h k')
-        results = solve([Eq(pow((x1-h),2) + pow((y1-k),2), pow(r,2)), Eq(pow((x2-h),2) + pow((y2-k),2), pow(r,2)), Eq(pow((x3-h),2) + pow((y3-k),2), pow(r,2))], [r, h, k])
+        r, h, k = sympy.symbols('r h k')
+        results = sympy.solve([sympy.Eq(pow((x1-h),2) + sympy.Pow((y1-k),2), sympy.Pow(r,2)), sympy.Eq(sympy.Pow((x2-h),2) + sympy.Pow((y2-k),2), sympy.Pow(r,2)), sympy.Eq(sympy.Pow((x3-h),2) + sympy.Pow((y3-k),2), sympy.Pow(r,2))], [r, h, k])
 
         if len(results) < 2:
           return [] # Error
@@ -409,14 +409,14 @@ class Detector:
         d = distanceBetweenRPM / 2.0
 
         # Simple trigonometry to find half of the center angle
-        centerAngle = asin(d / radius)
+        centerAngle = math.asin(d / radius)
 
         # Multiply by 2 to get center angle
         centerAngle = centerAngle * 2
 
         # Step 3: Find angle relative to first quadrant
         rpm1X = coordRPM1[0]
-        angleFromFirstQuadrant = acos((rpm1X - centerX) / radius)
+        angleFromFirstQuadrant = math.acos((rpm1X - centerX) / radius)
 
         # Step 4: Populate the RPM list
         # Just keep adding the center angle to the reference angle
@@ -431,8 +431,8 @@ class Detector:
           if i > 0:
             angleFromFirstQuadrant = angleFromFirstQuadrant + centerAngle
 
-          rpmX = cos(angleFromFirstQuadrant) * radius + centerX
-          rpmY = sin(angleFromFirstQuadrant) * radius + centerY
+          rpmX = math.cos(angleFromFirstQuadrant) * radius + centerX
+          rpmY = math.sin(angleFromFirstQuadrant) * radius + centerY
 
           rpmX = round(rpmX)
           rpmY = round(rpmY)
@@ -490,21 +490,18 @@ class Detector:
       
       # Solve for the 2 points where the line touches in the speedometer circle
       # The equation of a circle is: (x-h)^2 + (y-k)^2 = r^2. 
-      # If we isolate y, we get 2 equations (each x in circle has 2 y):
-      # y = sqrt(r^2 - x^2 + 2*h*x - h^2) + k
-      # y = -sqrt(r^2 - x^2 + 2*h*x - h^2) + k
-      #
-      # Now we are solving the equation :
-      # a*x + b = sqrt(r^2 - x^2 + 2*h*x - h^2) + k
-      # a*x + b = -sqrt(r^2 - x^2 + 2*h*x - h^2) + k
+      # If we substitute the y in the circle equation by the line equation, we get:
+      # (x-h)^2 + ((a*x+b)-k)^2 = r^2. 
+      # Now we solve for x to get the two points on the circle.
       possibleXs = list()
-      x = symbols('x')
+      x = sympy.symbols('x')
+      results = sympy.solve([sympy.Eq(sympy.Pow((x - self._SPEEDOMETER_CENTERX),2) + sympy.Pow(((a * x + b) - self._SPEEDOMETER_CENTERY),2), sympy.Pow(self._SPEEDOMETER_RADIUS,2))], [x])
 
-      results = solve([Eq(a*x + b, pow( pow(self._SPEEDOMETER_RADIUS,2) - pow(x,2) + 2 * self._SPEEDOMETER_CENTERX * x - pow(self._SPEEDOMETER_CENTERX,2), 0.5) + self._SPEEDOMETER_CENTERY)], [x])
-      possibleXs.append(results[0][0])
+      if len(results) != 2: # Should always return 2 results. If not, the line/circle equation is incorrect.
+        return 0
 
-      results = solve([Eq(a*x + b, -1 * pow( pow(self._SPEEDOMETER_RADIUS,2) - pow(x,2) + 2 * self._SPEEDOMETER_CENTERX * x - pow(self._SPEEDOMETER_CENTERX,2), 0.5) + self._SPEEDOMETER_CENTERY)], [x])
       possibleXs.append(results[0][0])
+      possibleXs.append(results[1][0])
 
       # Pick the point that is closest to the needle point
       chosenPointOnCircle = (0,0)
@@ -530,7 +527,7 @@ class Detector:
         if distance < self._SPEEDOMETER_DISTANCE_BETWEEN_DIGITS:
           # Calculate angle from point to RPM start
           d = distance / 2.0
-          angleFromRPM = asin(d / self._SPEEDOMETER_RADIUS) * 2
+          angleFromRPM = math.asin(d / self._SPEEDOMETER_RADIUS) * 2
           
           # Calculate the percent of the angle
           anglePercent = angleFromRPM / self._SPEEDOMERTER_CENTER_ANGLE * 100.0
@@ -560,7 +557,7 @@ class Detector:
       # sometimes, because of the erosion performed previously, there might be noise left...
       # Find the biggest contours among all the contours detected
       idealRPMNeedleMaxSize = 22 # Reject all contours above this size
-      idealRPMNeedleMinSize = 18 # Reject all contours below this size
+      idealRPMNeedleMinSize = 10 # Reject all contours below this size
       rpmNeedleCandidates = []
       withoutRPMNeedle = tresh # TODO
 
@@ -580,7 +577,7 @@ class Detector:
         return 0
 
       kernel = np.ones((1,1),np.uint8)
-      withoutRPMNeedle = cv2.erode(withoutRPMNeedle,kernel,iterations = 1)
+      withoutRPMNeedle = cv2.erode(withoutRPMNeedle,kernel,iterations = 5)
       kernel = np.ones((2,2),np.uint8)
       withoutRPMNeedle = cv2.dilate(withoutRPMNeedle,kernel,iterations = 2)
 
@@ -592,5 +589,5 @@ class Detector:
       speedometerDigits = self.__BuildSpeedometer(detectedDigitsCoordinates)
       if speedometerDigits == []:
         return 0
-      
+
       return self.__EstimateCurrentRPM(speedometerDigits, rpmNeedleCandidates)
