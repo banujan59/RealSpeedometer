@@ -320,7 +320,7 @@ class Detector:
       # sometimes, because of the erosion performed previously, there might be noise left...
       # Find the biggest contours among all the contours detected
       idealRPMNeedleMaxSize = 22 # Reject all contours above this size
-      idealRPMNeedleMinSize = 10 # Reject all contours below this size
+      idealRPMNeedleMinSize = 8 # Reject all contours below this size
       rpmNeedleCandidates = []
 
       for contour in contours:
