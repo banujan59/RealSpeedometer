@@ -8,8 +8,6 @@ import sympy
 
 class Detector:
     def __init__(self):
-        self.__frameDebugCounter = 0
-
         self._HUD_WIDTH = 135
         self._HUD_HEIGHT = 135
         self._HUD_Y = 317
@@ -317,7 +315,7 @@ class Detector:
       contours, _ = cv2.findContours(image=rpmIndicator, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_NONE)
 
       if len(contours) == 0 or len(contours) > 8: # Not a valid speedometer if we couldn't detect the needle properly
-        return 0
+        return [], np.array([])
 
       # sometimes, because of the erosion performed previously, there might be noise left...
       # Find the biggest contours among all the contours detected
