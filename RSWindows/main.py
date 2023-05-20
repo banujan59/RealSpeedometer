@@ -47,7 +47,7 @@ if __name__ == "__main__":
             detectionTimeSum = detectionTimeSum + duration
 
             print(f"{detectedSpeed} km/h {detectedRPM} RPM. Detection time is {duration} us, \taverage is {detectionTimeSum / nbDetection} us")
-            car.SetData(detectedSpeed, 0, 0, 0)
+            car.SetData(detectedSpeed, detectedRPM, 0, 0)
             clusterCommunicator.SendData(car.encodeData())
 
             time.sleep(0.1)
