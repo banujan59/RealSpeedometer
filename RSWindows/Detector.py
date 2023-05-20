@@ -24,13 +24,11 @@ class Detector:
         self._HUD_CENTER_WIDTH = 81
         self._HUD_CENTER_HEIGHT = 40
 
-        # TODO rename these variable to lower case since they're not constants
-        self._SPEEDOMETER_CENTERX = 0
-        self._SPEEDOMETER_CENTERY = 0
-        self._SPEEDOMETER_RADIUS = 0
-        self._SPEEDOMERTER_CENTER_ANGLE = 0.0
-        self._SPEEDOMETER_ARC_LENGTH = 0
-        self._SPEEDOMETER_DISTANCE_BETWEEN_DIGITS = 0
+        self._speedometer_centerX = 0
+        self._speedometer_centerY = 0
+        self._speedometer_radius = 0
+        self._speedometer_center_angle = 0.0
+        self._speedometer_distance_between_digits = 0
 
         self.datas = []
         self.labels = []
@@ -221,20 +219,20 @@ class Detector:
 
 
     def __CalculateDistance(self, coordinate1, coordinate2):
-      # TODO doc 
+      """
+      Function to calculate the euclidean distance between 2 coordinates.
+      Euclidean distance formula: d = (x2-x1)^2 + (y2-y1)^2
+
+      :param coordinate1: The x1,y1 coordinate to use in the euclidean distance
+      :param coordinate2: The x2,y2 coordinate to use in the euclidean distance
+      :return: The distance between points coordinate1 and coordinate2
+      """
       x1,y1 = coordinate1
       x2,y2 = coordinate2
       
       deltaX = pow(x2-x1,2)
       deltaY = pow(y2-y1,2)
       return math.sqrt(deltaX + deltaY)
-
-    def __UniteContours(self, a,b):
-      x = min(a[0], b[0])
-      y = min(a[1], b[1])
-      w = max(a[0]+a[2], b[0]+b[2]) - x
-      h = max(a[1]+a[3], b[1]+b[3]) - y
-      return (x, y, w, h)
 
     def __ReorderSpeedometerDigits(self, detectedDigitsCoordinates, centerX):
       """
@@ -246,7 +244,7 @@ class Detector:
       help in reordering since the left side is increasing from bottom to top and 
       the right side is increasing from top ot bottom.
       """
-      yDistanceThreshold = 30 # TODO refactor this between to global variable
+      yDistanceThreshold = 30
       distanceTooFar = 35
 
       # Assuming the list is already sorted by y descending
@@ -301,6 +299,50 @@ class Detector:
           listToReturn.append(coordinate)
 
       return listToReturn
+    
+    def __GetRPMNeedle(self, img):
+      """
+      Function to detect the RPM needle on the speedometer circle.
+      :param img: The image of the speedometer. Some pre-processing should be applied to make the image sharper.
+      :return rpmNeedleCandidates: The candidates of points that could represent the RPM needle. 
+      :return withoutRPMNeedle: The image of the speedometer but without the possible RPM candidates. This will be used later to detect the digits.
+      """
+      _, withoutRPMNeedle = cv2.threshold(img, 230, 255, cv2.THRESH_BINARY)
+      kernel = np.ones((2,2),np.uint8)
+      rpmIndicator = cv2.erode(withoutRPMNeedle,kernel,iterations = 1)
+      kernel = np.ones((2,2),np.uint8)
+      rpmIndicator = cv2.dilate(rpmIndicator,kernel,iterations = 2)
+
+      # position of needle
+      contours, _ = cv2.findContours(image=rpmIndicator, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_NONE)
+
+      if len(contours) == 0 or len(contours) > 8: # Not a valid speedometer if we couldn't detect the needle properly
+        return 0
+
+      # sometimes, because of the erosion performed previously, there might be noise left...
+      # Find the biggest contours among all the contours detected
+      idealRPMNeedleMaxSize = 22 # Reject all contours above this size
+      idealRPMNeedleMinSize = 10 # Reject all contours below this size
+      rpmNeedleCandidates = []
+
+      for contour in contours:
+        currentRpmBox = cv2.boundingRect(contour)
+        x,y,w,h = currentRpmBox
+        currentSize = w * h
+
+        if currentSize >= idealRPMNeedleMinSize and currentSize <= idealRPMNeedleMaxSize:
+          rpmNeedleCandidates.append(currentRpmBox)
+        
+        # Remove all contours to be left with only the digits
+        rpmNeedleInThresholdedImg = withoutRPMNeedle[y:y+h+1,x:x+w+1]
+        rpmNeedleInThresholdedImg.fill(0) # TODO what happens if needle is on a digit used to reconstruct the speedometer?
+
+      kernel = np.ones((1,1),np.uint8)
+      withoutRPMNeedle = cv2.erode(withoutRPMNeedle,kernel,iterations = 5)
+      kernel = np.ones((2,2),np.uint8)
+      withoutRPMNeedle = cv2.dilate(withoutRPMNeedle,kernel,iterations = 2)
+
+      return rpmNeedleCandidates, withoutRPMNeedle
 
     def __GetSpeedometerDigitPositions(self, withoutRPMNeedle):
       detectedDigitsCoordinates = []
@@ -383,9 +425,9 @@ class Detector:
         if len(results) < 2:
           return [] # Error
 
-        self._SPEEDOMETER_CENTERX = 0
-        self._SPEEDOMETER_CENTERY = 0
-        self._SPEEDOMETER_RADIUS = 0
+        self._speedometer_centerX = 0
+        self._speedometer_centerY = 0
+        self._speedometer_radius = 0
 
         # There should be 2 answers because of the sqrt of radius
         for result in results:
@@ -403,7 +445,7 @@ class Detector:
         coordRPM1 = detectedDigitsCoordinates[0]
         coordRPM2 = detectedDigitsCoordinates[1]
         distanceBetweenRPM = self.__CalculateDistance(coordRPM1, coordRPM2)
-        self._SPEEDOMETER_DISTANCE_BETWEEN_DIGITS = distanceBetweenRPM
+        self._speedometer_distance_between_digits = distanceBetweenRPM
 
         # Divide distance by 2 to construct right a angle triangle 
         d = distanceBetweenRPM / 2.0
@@ -439,14 +481,10 @@ class Detector:
 
           speedometerDigits.append( (rpmX, rpmY) )
 
-        self._SPEEDOMETER_CENTERX = centerX
-        self._SPEEDOMETER_CENTERY = centerY
-        self._SPEEDOMETER_RADIUS = radius
-        self._SPEEDOMERTER_CENTER_ANGLE = centerAngle
-
-        # Step 5: Calculate arc length
-        # This is used to calculate the RPM more accurately
-        self._SPEEDOMETER_ARC_LENGTH = self._SPEEDOMETER_RADIUS * self._SPEEDOMERTER_CENTER_ANGLE
+        self._speedometer_centerX = centerX
+        self._speedometer_centerY = centerY
+        self._speedometer_radius = radius
+        self._speedometer_center_angle = centerAngle
 
       return speedometerDigits
 
@@ -462,7 +500,7 @@ class Detector:
       # TODO this algorithm might have a flaw: What if the "needle" detected is not correct because it is noise that is very close to the circle?
       chosenRPMBox = (0,0,0,0)
       smallestDifference = 6540 # An arbitrary value. 
-      radiusSquared = pow(self._SPEEDOMETER_RADIUS, 2)
+      radiusSquared = pow(self._speedometer_radius, 2)
 
       for rpmBox in rpmNeedleCandidates:
         x,y,w,h = rpmBox
@@ -470,7 +508,7 @@ class Detector:
         rpmBoxY = int(y + h/2)
 
         # Insert into circle's equation
-        result = pow(rpmBoxX - self._SPEEDOMETER_CENTERX,2) + pow(rpmBoxY - self._SPEEDOMETER_CENTERY,2)
+        result = pow(rpmBoxX - self._speedometer_centerX,2) + pow(rpmBoxY - self._speedometer_centerY,2)
         difference = abs(radiusSquared - result)
 
         if difference < smallestDifference:
@@ -485,7 +523,7 @@ class Detector:
 
       # Construct line from middle of rpm needle to the center of the circle
       # Equation is: y = ax + b
-      a = (rpmBoxY - self._SPEEDOMETER_CENTERY) / (rpmBoxX - self._SPEEDOMETER_CENTERX)
+      a = (rpmBoxY - self._speedometer_centerY) / (rpmBoxX - self._speedometer_centerX)
       b = rpmBoxY - a * rpmBoxX
       
       # Solve for the 2 points where the line touches in the speedometer circle
@@ -495,7 +533,7 @@ class Detector:
       # Now we solve for x to get the two points on the circle.
       possibleXs = list()
       x = sympy.symbols('x')
-      results = sympy.solve([sympy.Eq(sympy.Pow((x - self._SPEEDOMETER_CENTERX),2) + sympy.Pow(((a * x + b) - self._SPEEDOMETER_CENTERY),2), sympy.Pow(self._SPEEDOMETER_RADIUS,2))], [x])
+      results = sympy.solve([sympy.Eq(sympy.Pow((x - self._speedometer_centerX),2) + sympy.Pow(((a * x + b) - self._speedometer_centerY),2), sympy.Pow(self._speedometer_radius,2))], [x])
 
       if len(results) != 2: # Should always return 2 results. If not, the line/circle equation is incorrect.
         return 0
@@ -524,13 +562,13 @@ class Detector:
         distance = self.__CalculateDistance(chosenPointOnCircle, coordinate)
 
         # If distance is greater than distance between digit, the point doesn't belong to the current RPM
-        if distance < self._SPEEDOMETER_DISTANCE_BETWEEN_DIGITS:
+        if distance < self._speedometer_distance_between_digits:
           # Calculate angle from point to RPM start
           d = distance / 2.0
-          angleFromRPM = math.asin(d / self._SPEEDOMETER_RADIUS) * 2
+          angleFromRPM = math.asin(d / self._speedometer_radius) * 2
           
           # Calculate the percent of the angle
-          anglePercent = angleFromRPM / self._SPEEDOMERTER_CENTER_ANGLE * 100.0
+          anglePercent = angleFromRPM / self._speedometer_center_angle * 100.0
           break
 
         thousandsCounter = thousandsCounter + 1000
@@ -542,44 +580,9 @@ class Detector:
       edgeKernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
       img = cv2.filter2D(img, -1, edgeKernel)
 
-      _, tresh = cv2.threshold(img, 230, 255, cv2.THRESH_BINARY)
-      kernel = np.ones((2,2),np.uint8)
-      rpmIndicator = cv2.erode(tresh,kernel,iterations = 1)
-      kernel = np.ones((2,2),np.uint8)
-      rpmIndicator = cv2.dilate(rpmIndicator,kernel,iterations = 2)
-
-      # position of needle
-      contours, _ = cv2.findContours(image=rpmIndicator, mode=cv2.RETR_LIST, method=cv2.CHAIN_APPROX_NONE)
-
-      if len(contours) == 0 or len(contours) > 8: # Not a valid speedometer if we couldn't detect the needle properly
-        return 0
-
-      # sometimes, because of the erosion performed previously, there might be noise left...
-      # Find the biggest contours among all the contours detected
-      idealRPMNeedleMaxSize = 22 # Reject all contours above this size
-      idealRPMNeedleMinSize = 10 # Reject all contours below this size
-      rpmNeedleCandidates = []
-      withoutRPMNeedle = tresh # TODO
-
-      for contour in contours:
-        currentRpmBox = cv2.boundingRect(contour)
-        x,y,w,h = currentRpmBox
-        currentSize = w * h
-
-        if currentSize >= idealRPMNeedleMinSize and currentSize <= idealRPMNeedleMaxSize:
-          rpmNeedleCandidates.append(currentRpmBox)
-        
-        # Remove all contours to be left with only the digits
-        rpmNeedleInThresholdedImg = withoutRPMNeedle[y:y+h+1,x:x+w+1]
-        rpmNeedleInThresholdedImg.fill(0) # TODO what happens if needle is on a digit used to reconstruct the speedometer?
-
+      rpmNeedleCandidates, withoutRPMNeedle = self.__GetRPMNeedle(img)
       if len(rpmNeedleCandidates) == 0: # A proper sized needle could not be detected.
         return 0
-
-      kernel = np.ones((1,1),np.uint8)
-      withoutRPMNeedle = cv2.erode(withoutRPMNeedle,kernel,iterations = 5)
-      kernel = np.ones((2,2),np.uint8)
-      withoutRPMNeedle = cv2.dilate(withoutRPMNeedle,kernel,iterations = 2)
 
       # Build the speedometer
       detectedDigitsCoordinates = self.__GetSpeedometerDigitPositions(withoutRPMNeedle) # TODO add something to not rebuild the speedometer everytime
