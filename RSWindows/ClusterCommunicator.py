@@ -2,7 +2,13 @@ import socket
 from threading import Thread, Lock, Semaphore
 
 class ClusterCommunicator:
-    def __init__(self, ip_address, port):
+    def __init__(self, ip_address, port, disableCommunicator):
+        self.__isDisabled = disableCommunicator
+        
+        if not self.__isDisabled:
+            self.__Connect(ip_address=ip_address, port=port)
+        
+    def __Connect(self, ip_address, port):
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._socket.connect((str(ip_address), int(port)))
         
@@ -15,11 +21,12 @@ class ClusterCommunicator:
         self._sendThread.start()
 
     def SendData(self, data):
-        self._dataMutex.acquire()
-        self._latestDataToSend = data
-        self._dataMutex.release()
-        
-        self._dataReceivedSemaphore.release()
+        if not self.__isDisabled:
+            self._dataMutex.acquire()
+            self._latestDataToSend = data
+            self._dataMutex.release()
+            
+            self._dataReceivedSemaphore.release()
 
     def _SendDataThread(self):
         while not self._terminateThreadSignal:
@@ -35,8 +42,9 @@ class ClusterCommunicator:
                 self._socket.recv(64)
 
     def __del__(self):
-        self._terminateThreadSignal = True
-        self._dataReceivedSemaphore.release()
-        self._sendThread.join()
+        if not self.__isDisabled:
+            self._terminateThreadSignal = True
+            self._dataReceivedSemaphore.release()
+            self._sendThread.join()
 
-        self._socket.close()
+            self._socket.close()

@@ -14,6 +14,9 @@ if __name__ == "__main__":
                     help="The port of the TCP server running on the embedded device.")
     ap.add_argument("-monitor", "--monitor", required=True,
                     help="The index of the monitor where the game will run. Use monitorTest.py to see if your index points to the correct monitor.")
+    ap.add_argument("-disableEmbedded", "--disableEmbedded", required=False, action=argparse.BooleanOptionalAction,
+                    help="[optional] If set, the data will not be sent to the embedded device.")
+    ap.set_defaults(disableEmbedded=False)
 
     args = vars(ap.parse_args())
     
@@ -24,7 +27,9 @@ if __name__ == "__main__":
         print("Use monitorTest.py to test for your correct monitor ID.")
         exit(-1)
 
-    clusterCommunicator = ClusterCommunicator(args["ip"], args["port"])
+    sendToEmbedded = args['disableEmbedded']
+    clusterCommunicator = ClusterCommunicator(args["ip"], args["port"], args['disableEmbedded'])
+
     car = Car()
 
     detector = Detector()
